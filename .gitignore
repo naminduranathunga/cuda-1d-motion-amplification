@@ -1,0 +1,8 @@
+__pycache__
+build/*
+uploads/*
+processed/*
+venv/*
+*.mp4
+!test_input.mp4
+!test_output.mp4
