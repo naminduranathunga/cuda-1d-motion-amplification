@@ -30,6 +30,7 @@ GPUContext* initGPU(int width, int height, float sigma) {
 
     cudaMalloc(&ctx->d_input, img_size);
     cudaMalloc(&ctx->d_blur, img_size);
+    cudaMalloc(&ctx->d_temp_blur, img_size);
     cudaMalloc(&ctx->d_sobel, img_size);
     cudaMalloc(&ctx->d_filtered, img_size);
     cudaMalloc(&ctx->d_output, img_size);
@@ -48,6 +49,7 @@ void cleanupGPU(GPUContext* ctx) {
         cleanup_blur_texture();
         cudaFree(ctx->d_input);
         cudaFree(ctx->d_blur);
+        cudaFree(ctx->d_temp_blur);
         cudaFree(ctx->d_sobel);
         cudaFree(ctx->d_filtered);
         cudaFree(ctx->d_output);
@@ -75,9 +77,9 @@ void process_frame(float* h_input, float* h_output, GPUContext* ctx, float alpha
     cudaEventElapsedTime(&milliseconds, start, stop);
     metrics->host_to_device_ms = milliseconds;
 
-    // 2. Gaussian Blur
+    // 2. Gaussian Blur (Separable)
     cudaEventRecord(start);
-    apply_gaussian_blur_tex2d(ctx->d_input, ctx->d_blur, width, height, 0.0f); // sigma is pre-calculated
+    apply_gaussian_blur_tex2d(ctx->d_input, ctx->d_temp_blur, ctx->d_blur, width, height); 
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);

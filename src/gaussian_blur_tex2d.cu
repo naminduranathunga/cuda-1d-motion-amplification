@@ -1,30 +1,40 @@
 #include "motion_amp.h"
 #include <device_launch_parameters.h>
 
-__constant__ float d_gaussian_weights[25];
-__constant__ float d_weight_sum;
+__constant__ float d_gaussian_weights[5];
 
-__global__ void gaussian_blur_kernel_tex2d(cudaTextureObject_t input, float* output, int width, int height) {
+__global__ void gaussian_blur_h_kernel(cudaTextureObject_t input, float* output, int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (x >= width || y >= height) return;
 
-    // Use a 5x5 dynamic kernel based on sigma
     float sum = 0.0f;
 
     #pragma unroll
     for (int i = -2; i <= 2; ++i) {
-        #pragma unroll
-        for (int j = -2; j <= 2; ++j) {
-            float w = d_gaussian_weights[(i+2)*5 + (j+2)];
-            sum += tex2D<float>(input, x + j, y + i) * w;
-        }
+        sum += tex2D<float>(input, x + i, y) * d_gaussian_weights[i + 2];
     }
 
-    output[y * width + x] = sum / d_weight_sum;
+    output[y * width + x] = sum;
 }
 
+__global__ void gaussian_blur_v_kernel(float* input, float* output, int width, int height) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x >= width || y >= height) return;
+
+    float sum = 0.0f;
+
+    #pragma unroll
+    for (int i = -2; i <= 2; ++i) {
+        int ny = min(max(y + i, 0), height - 1);
+        sum += input[ny * width + x] * d_gaussian_weights[i + 2];
+    }
+
+    output[y * width + x] = sum;
+}
 
 cudaTextureObject_t createTexture2D(float* d_input, int width, int height) {
     cudaResourceDesc resDesc{};
@@ -49,16 +59,18 @@ cudaTextureObject_t createTexture2D(float* d_input, int width, int height) {
 }
 
 
-void preComputeGaussianWeigths(float* dest, float sigma) {
+void preComputeGaussianWeights1D(float* dest, float sigma) {
     float s2 = 2.0f * sigma * sigma;
+    float sum = 0.0f;
     for (int i = -2; i <= 2; ++i) {
-        for (int j = -2; j <= 2; ++j) {
-            float dist_sq = (float)(i * i + j * j);
-            float w = expf(-dist_sq / s2);
-            int row = i + 2;
-            int col = j + 2;
-            dest[row * 5 + col] = w;
-        }
+        float dist_sq = (float)(i * i);
+        float w = expf(-dist_sq / s2);
+        dest[i + 2] = w;
+        sum += w;
+    }
+    // Normalize
+    for (int i = 0; i < 5; ++i) {
+        dest[i] /= sum;
     }
 }
 
@@ -79,21 +91,18 @@ extern "C" void cleanup_blur_texture() {
 }
 
 extern "C" void set_gaussian_weights(float sigma) {
-    float h_weights[25];
-    preComputeGaussianWeigths(h_weights, sigma);
+    float h_weights[5];
+    preComputeGaussianWeights1D(h_weights, sigma);
     cudaMemcpyToSymbol(d_gaussian_weights, h_weights, sizeof(h_weights));
-
-    // calculate sum
-    float h_weight_sum = 0.0f;
-    for (int i = 0; i < 25; ++i) {
-        h_weight_sum += h_weights[i];
-    }
-    cudaMemcpyToSymbol(d_weight_sum, &h_weight_sum, sizeof(float));
 }
 
-extern "C" void apply_gaussian_blur_tex2d(float* d_input, float* d_output, int width, int height, float sigma) {
+extern "C" void apply_gaussian_blur_tex2d(float* d_input, float* d_temp, float* d_output, int width, int height) {
     dim3 blockSize(16, 16);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
 
-    gaussian_blur_kernel_tex2d<<<gridSize, blockSize>>>(h_texture_input, d_output, width, height);
+    // 1. Horizontal pass: Texture -> Temp (Linear)
+    gaussian_blur_h_kernel<<<gridSize, blockSize>>>(h_texture_input, d_temp, width, height);
+    
+    // 2. Vertical pass: Temp (Linear) -> Output (Linear)
+    gaussian_blur_v_kernel<<<gridSize, blockSize>>>(d_temp, d_output, width, height);
 }

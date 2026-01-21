@@ -8,6 +8,7 @@ extern "C" {
 struct GPUContext {
     float *d_input;
     float *d_blur;
+    float *d_temp_blur;
     float *d_sobel;
     float *d_filtered;
     float *d_output;
@@ -37,7 +38,7 @@ void set_gaussian_weights(float sigma);
 void init_blur_texture(float* d_input, int width, int height);
 void cleanup_blur_texture();
 void apply_gaussian_blur(float* d_input, float* d_output, int width, int height, float sigma);
-void apply_gaussian_blur_tex2d(float* d_input, float* d_output, int width, int height, float sigma);
+void apply_gaussian_blur_tex2d(float* d_input, float* d_temp, float* d_output, int width, int height);
 void apply_sobel_x(float* d_input, float* d_output, int width, int height);
 void apply_temporal_filter(float* d_input, float* d_state, float* d_output, int width, int height, float low_cutoff, float high_cutoff);
 void apply_amplify(float* d_original, float* d_filtered, float* d_output, int width, int height, float alpha);

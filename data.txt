@@ -39,3 +39,18 @@ Amplification
 0.174 ms
 Total GPU Time
 8.901 ms
+
+
+# Apply Seperable Gaussian
+Host → Device
+3.121 ms
+Gaussian Blur
+0.367 ms
+Sobel X
+0.259 ms
+Temporal Filter
+0.353 ms
+Amplification
+0.172 ms
+Total GPU Time
+7.511 ms

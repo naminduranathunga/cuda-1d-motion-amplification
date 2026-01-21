@@ -24,6 +24,7 @@ class GPUContext(ctypes.Structure):
     _fields_ = [
         ("d_input", ctypes.c_void_p),
         ("d_blur", ctypes.c_void_p),
+        ("d_temp_blur", ctypes.c_void_p),
         ("d_sobel", ctypes.c_void_p),
         ("d_filtered", ctypes.c_void_p),
         ("d_output", ctypes.c_void_p),
