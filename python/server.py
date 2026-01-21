@@ -29,6 +29,14 @@ def upload_file():
     
     file = request.files['video']
     alpha = float(request.form.get('alpha', 50.0))
+    sigma = float(request.form.get('sigma', 1.0))
+    low_freq = float(request.form.get('low_freq', 0.5))
+    high_freq = float(request.form.get('high_freq', 2.0))
+    fps = request.form.get('fps')
+    if fps:
+        fps = float(fps)
+    else:
+        fps = None
     
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
@@ -42,7 +50,7 @@ def upload_file():
     
     # Process the video
     try:
-        metrics = process_video(input_path, output_path, alpha)
+        metrics = process_video(input_path, output_path, alpha, sigma, low_freq, high_freq, fps)
         
         # Transcode BOTH to H.264 for web compatibility
         import imageio_ffmpeg
@@ -116,5 +124,69 @@ def get_roi_histogram():
     
     return jsonify({'histogram': hist.tolist()})
 
+@app.route('/frequency_spectrum', methods=['POST'])
+def get_frequency_spectrum():
+    data = request.json
+    video_path = data.get('video_path')
+    roi = data.get('roi') # {x1, y1, x2, y2}
+    
+    if video_path.startswith('/uploads/'):
+        video_path = os.path.join(UPLOAD_FOLDER, video_path.replace('/uploads/', ''))
+    elif video_path.startswith('/processed/'):
+        video_path = os.path.join(PROCESSED_FOLDER, video_path.replace('/processed/', ''))
+
+    if not os.path.exists(video_path):
+        return jsonify({'error': 'Video not found'}), 404
+
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    
+    intensities = []
+    
+    # Sample every frame for the first 10 seconds or total duration to get a spectrum
+    # For performance, maybe limit to 300 frames (~10s at 30fps)
+    frame_count = 0
+    max_frames = 300
+    
+    while cap.isOpened() and frame_count < max_frames:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Crop to ROI
+        x1, y1, x2, y2 = int(roi['x1']), int(roi['y1']), int(roi['x2']), int(roi['y2'])
+        # Ensure ROI is within bounds
+        h, w = gray.shape
+        x1, x2 = max(0, x1), min(w, x2)
+        y1, y2 = max(0, y1), min(h, y2)
+        
+        if x2 > x1 and y2 > y1:
+            roi_slice = gray[y1:y2, x1:x2]
+            avg_intensity = np.mean(roi_slice)
+            intensities.append(avg_intensity)
+        
+        frame_count += 1
+    
+    cap.release()
+
+    if not intensities:
+        return jsonify({'error': 'No data for ROI'}), 400
+
+    # Compute FFT
+    n = len(intensities)
+    # Detrend
+    intensities = np.array(intensities) - np.mean(intensities)
+    fft_vals = np.fft.rfft(intensities)
+    fft_freqs = np.fft.rfftfreq(n, d=1.0/fps)
+    
+    magnitudes = np.abs(fft_vals)
+    
+    return jsonify({
+        'frequencies': fft_freqs.tolist(),
+        'magnitudes': magnitudes.tolist()
+    })
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+

@@ -47,6 +47,41 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Initialize Frequency Spectrum Chart
+    const freqCanvas = document.getElementById('frequency-chart');
+    const freqChart = new Chart(freqCanvas, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Magnitude',
+                data: [],
+                backgroundColor: 'rgba(46, 160, 67, 0.3)',
+                borderColor: 'rgba(46, 160, 67, 1)',
+                borderWidth: 2,
+                fill: true,
+                pointRadius: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    title: { display: true, text: 'Magnitude', color: '#8b949e' }
+                },
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    title: { display: true, text: 'Frequency (Hz)', color: '#8b949e' }
+                }
+            },
+            plugins: { legend: { display: false } },
+            animation: false
+        }
+    });
+
     // ROI Drawing
     const drawRoi = () => {
         roiCanvas.width = inputPlayer.clientWidth;
@@ -74,8 +109,27 @@ document.addEventListener('DOMContentLoaded', () => {
         drawRoi();
     });
 
-    roiCanvas.addEventListener('mouseup', () => {
+    const getMappedRoi = () => {
+        const videoW = inputPlayer.videoWidth;
+        const videoH = inputPlayer.videoHeight;
+        const canvasW = roiCanvas.width;
+        const canvasH = roiCanvas.height;
+        if (videoW === 0 || canvasW === 0) return null;
+
+        const scaleX = videoW / canvasW;
+        const scaleY = videoH / canvasH;
+
+        return {
+            x1: Math.floor(Math.min(roi.x1, roi.x2) * scaleX),
+            y1: Math.floor(Math.min(roi.y1, roi.y2) * scaleY),
+            x2: Math.floor(Math.max(roi.x1, roi.x2) * scaleX),
+            y2: Math.floor(Math.max(roi.y1, roi.y2) * scaleY)
+        };
+    };
+
+    roiCanvas.addEventListener('mouseup', async () => {
         isSelecting = false;
+        updateFrequencySpectrum();
     });
 
     window.addEventListener('resize', drawRoi);
@@ -84,24 +138,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update Histogram from Server
     const updateHistogram = async () => {
         if (!currentInputUrl || isSelecting) return;
-
-        // Map ROI from canvas coordinates to video coordinates
-        const videoW = inputPlayer.videoWidth;
-        const videoH = inputPlayer.videoHeight;
-        const canvasW = roiCanvas.width;
-        const canvasH = roiCanvas.height;
-
-        if (videoW === 0 || canvasW === 0) return;
-
-        const scaleX = videoW / canvasW;
-        const scaleY = videoH / canvasH;
-
-        const mappedRoi = {
-            x1: Math.floor(Math.min(roi.x1, roi.x2) * scaleX),
-            y1: Math.floor(Math.min(roi.y1, roi.y2) * scaleY),
-            x2: Math.floor(Math.max(roi.x1, roi.x2) * scaleX),
-            y2: Math.floor(Math.max(roi.y1, roi.y2) * scaleY)
-        };
+        const mappedRoi = getMappedRoi();
+        if (!mappedRoi) return;
 
         try {
             const response = await fetch('/histogram', {
@@ -121,6 +159,29 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { console.error(e); }
     };
 
+    const updateFrequencySpectrum = async () => {
+        if (!currentInputUrl || isSelecting) return;
+        const mappedRoi = getMappedRoi();
+        if (!mappedRoi) return;
+
+        try {
+            const response = await fetch('/frequency_spectrum', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    video_path: currentInputUrl,
+                    roi: mappedRoi
+                })
+            });
+            const data = await response.json();
+            if (data.frequencies) {
+                freqChart.data.labels = data.frequencies.map(f => f.toFixed(2));
+                freqChart.data.datasets[0].data = data.magnitudes;
+                freqChart.update();
+            }
+        } catch (e) { console.error(e); }
+    };
+
     setInterval(updateHistogram, 500); // Update twice per second
 
     // Handle form submission
@@ -130,9 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const file = videoInput.files[0];
         if (!file) return;
 
-        const formData = new FormData();
-        formData.append('video', file);
-        formData.append('alpha', alphaRange.value);
+        const formData = new FormData(uploadForm);
 
         // UI state: processing
         processBtn.disabled = true;
@@ -163,7 +222,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Reset state
                 resultsSection.classList.remove('hidden');
-                setTimeout(drawRoi, 500);
+                setTimeout(() => {
+                    drawRoi();
+                    updateFrequencySpectrum();
+                }, 500);
             } else {
                 alert(`Error: ${data.error}`);
             }

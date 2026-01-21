@@ -1,0 +1,41 @@
+# Normal mode:
+Host → Device
+3.362 ms
+Gaussian Blur
+1.089 ms
+Sobel X
+0.266 ms
+Temporal Filter
+0.358 ms
+Amplification
+0.182 ms
+Total GPU Time
+9.296 ms
+
+# With Tex2D
+Host → Device
+3.300 ms
+Gaussian Blur
+0.788 ms
+Sobel X
+0.261 ms
+Temporal Filter
+0.354 ms
+Amplification
+0.172 ms
+Total GPU Time
+8.783 ms
+
+# Adding Constant memory
+Host → Device
+3.384 ms
+Gaussian Blur
+0.693 ms
+Sobel X
+0.269 ms
+Temporal Filter
+0.356 ms
+Amplification
+0.174 ms
+Total GPU Time
+8.901 ms

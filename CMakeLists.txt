@@ -12,6 +12,8 @@ add_library(motion_amp SHARED
     src/amplify.cu
     src/histogram.cu
     src/wrapper.cpp
+    # Tex2D versions
+    src/gaussian_blur_tex2d.cu
 )
 
 # Target properties

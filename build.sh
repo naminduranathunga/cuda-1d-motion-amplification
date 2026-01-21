@@ -29,6 +29,9 @@ fi
 
 # Build
 mkdir -p build && cd build && cmake .. && make -j
+cd ..
 # Run (ensure venv is active)
+# cd ~/gpu_prog/minip
 source venv/bin/activate
 python3 python/main.py
+

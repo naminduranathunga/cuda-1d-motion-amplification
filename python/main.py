@@ -54,6 +54,9 @@ lib.process_frame.argtypes = [
     ctypes.c_int,                  # width
     ctypes.c_int,                  # height
     ctypes.c_float,                # alpha
+    ctypes.c_float,                # sigma
+    ctypes.c_float,                # alpha_l
+    ctypes.c_float,                # alpha_h
     ctypes.POINTER(Metrics)        # metrics
 ]
 
@@ -71,7 +74,7 @@ def generate_synthetic_video(filename, width=640, height=480, frames=100):
     out.release()
     print(f"Generated {filename}")
 
-def process_video(input_video, output_video, alpha=50.0):
+def process_video(input_video, output_video, alpha=50.0, sigma=1.0, low_freq=0.5, high_freq=2.0, user_fps=None):
     cap = cv2.VideoCapture(input_video)
     if not cap.isOpened():
         print(f"Error opening video: {input_video}")
@@ -80,6 +83,18 @@ def process_video(input_video, output_video, alpha=50.0):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
+    if user_fps:
+        fps = user_fps
+    
+    # Calculate IIR alphas
+    def freq_to_alpha(f, fs):
+        # alpha = (2*pi*f/fs) / (1 + 2*pi*f/fs)
+        w = 2 * np.pi * f / fs
+        return w / (1 + w)
+
+    alpha_l = freq_to_alpha(low_freq, fps)
+    alpha_h = freq_to_alpha(high_freq, fps)
+    print(f"Settings: Sigma={sigma}, Low={low_freq}Hz, High={high_freq}Hz, FPS={fps}")
 
     # Try to use avc1 (H.264) for web compatibility, fallback to mp4v
     fourcc = cv2.VideoWriter_fourcc(*'avc1')
@@ -122,6 +137,9 @@ def process_video(input_video, output_video, alpha=50.0):
             width,
             height,
             alpha,
+            sigma,
+            alpha_l,
+            alpha_h,
             ctypes.byref(metrics)
         )
 
@@ -167,3 +185,4 @@ if __name__ == "__main__":
         generate_synthetic_video(input_file)
         
     process_video(input_file, output_file)
+

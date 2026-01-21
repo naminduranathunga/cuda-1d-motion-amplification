@@ -21,7 +21,9 @@ void free_device_memory(void* ptr) {
     }
 }
 
-void process_frame(float* h_input, float* h_output, float* d_state, int width, int height, float alpha, Metrics* metrics) {
+
+
+void process_frame(float* h_input, float* h_output, float* d_state, int width, int height, float alpha, float sigma, float alpha_l, float alpha_h, Metrics* metrics) {
     size_t img_size = width * height * sizeof(float);
     
     float *d_input, *d_blur, *d_sobel, *d_filtered, *d_output;
@@ -49,7 +51,8 @@ void process_frame(float* h_input, float* h_output, float* d_state, int width, i
 
     // 2. Gaussian Blur
     cudaEventRecord(start);
-    apply_gaussian_blur(d_input, d_blur, width, height);
+    // apply_gaussian_blur(d_input, d_blur, width, height, sigma);
+    apply_gaussian_blur_tex2d(d_input, d_blur, width, height, sigma);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
@@ -64,9 +67,6 @@ void process_frame(float* h_input, float* h_output, float* d_state, int width, i
     metrics->sobel_x_ms = milliseconds;
 
     // 4. Temporal Filter
-    // alpha_l and alpha_h could be parameters, hardcoding for now or adding to process_frame
-    float alpha_l = 0.05f; 
-    float alpha_h = 0.2f;
     cudaEventRecord(start);
     apply_temporal_filter(d_sobel, d_state, d_filtered, width, height, alpha_l, alpha_h);
     cudaEventRecord(stop);

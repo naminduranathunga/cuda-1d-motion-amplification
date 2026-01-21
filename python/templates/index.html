@@ -29,6 +29,24 @@
                             </label>
                             <div id="file-name" class="file-name"></div>
                         </div>
+                        <div class="form-group grid-param">
+                            <div class="input-item">
+                                <label for="low-freq">Low Cutoff (Hz)</label>
+                                <input type="number" id="low-freq" name="low_freq" step="0.1" value="0.5">
+                            </div>
+                            <div class="input-item">
+                                <label for="high-freq">High Cutoff (Hz)</label>
+                                <input type="number" id="high-freq" name="high_freq" step="0.1" value="2.0">
+                            </div>
+                            <div class="input-item">
+                                <label for="sigma-val">Gaussian Sigma</label>
+                                <input type="number" id="sigma-val" name="sigma" step="0.1" value="1.0">
+                            </div>
+                            <div class="input-item">
+                                <label for="user-fps">Override FPS</label>
+                                <input type="number" id="user-fps" name="fps" step="0.01" placeholder="Auto">
+                            </div>
+                        </div>
                         <div class="form-group">
                             <label for="alpha-range">Amplification Factor (α): <span id="alpha-val">50</span></label>
                             <input type="range" id="alpha-range" name="alpha" min="1" max="200" value="50">
@@ -87,10 +105,18 @@
                     </div>
                 </div>
 
-                <div class="analysis-container glass">
-                    <h3>ROI Intensity Histogram</h3>
-                    <div class="chart-wrapper">
-                        <canvas id="histogram-chart"></canvas>
+                <div class="analysis-grid">
+                    <div class="analysis-card glass">
+                        <h3>ROI Intensity Histogram</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="histogram-chart"></canvas>
+                        </div>
+                    </div>
+                    <div class="analysis-card glass">
+                        <h3>Frequency Spectrum (Hz)</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="frequency-chart"></canvas>
+                        </div>
                     </div>
                 </div>
 
