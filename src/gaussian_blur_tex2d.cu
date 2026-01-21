@@ -1,7 +1,8 @@
 #include "motion_amp.h"
 #include <device_launch_parameters.h>
 
-__constant__ float h_gaussian_weights[25];
+__constant__ float d_gaussian_weights[25];
+__constant__ float d_weight_sum;
 
 __global__ void gaussian_blur_kernel_tex2d(cudaTextureObject_t input, float* output, int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -11,18 +12,17 @@ __global__ void gaussian_blur_kernel_tex2d(cudaTextureObject_t input, float* out
 
     // Use a 5x5 dynamic kernel based on sigma
     float sum = 0.0f;
-    float weight_sum = 0.0f;
 
+    #pragma unroll
     for (int i = -2; i <= 2; ++i) {
+        #pragma unroll
         for (int j = -2; j <= 2; ++j) {
-            float w = h_gaussian_weights[(i+2)*5 + (j+2)];
-            
+            float w = d_gaussian_weights[(i+2)*5 + (j+2)];
             sum += tex2D<float>(input, x + j, y + i) * w;
-            weight_sum += w;
         }
     }
 
-    output[y * width + x] = sum / weight_sum;
+    output[y * width + x] = sum / d_weight_sum;
 }
 
 
@@ -62,16 +62,38 @@ void preComputeGaussianWeigths(float* dest, float sigma) {
     }
 }
 
+static cudaTextureObject_t h_texture_input = 0;
+
+extern "C" void init_blur_texture(float* d_input, int width, int height) {
+    if (h_texture_input) {
+        cudaDestroyTextureObject(h_texture_input);
+    }
+    h_texture_input = createTexture2D(d_input, width, height);
+}
+
+extern "C" void cleanup_blur_texture() {
+    if (h_texture_input) {
+        cudaDestroyTextureObject(h_texture_input);
+        h_texture_input = 0;
+    }
+}
+
+extern "C" void set_gaussian_weights(float sigma) {
+    float h_weights[25];
+    preComputeGaussianWeigths(h_weights, sigma);
+    cudaMemcpyToSymbol(d_gaussian_weights, h_weights, sizeof(h_weights));
+
+    // calculate sum
+    float h_weight_sum = 0.0f;
+    for (int i = 0; i < 25; ++i) {
+        h_weight_sum += h_weights[i];
+    }
+    cudaMemcpyToSymbol(d_weight_sum, &h_weight_sum, sizeof(float));
+}
+
 extern "C" void apply_gaussian_blur_tex2d(float* d_input, float* d_output, int width, int height, float sigma) {
     dim3 blockSize(16, 16);
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
 
-    cudaTextureObject_t tex = createTexture2D(d_input, width, height);
-
-    // Gaussian weigths
-    float h_weigths[25];
-    preComputeGaussianWeigths(h_weigths, sigma);
-    cudaMemcpyToSymbol(h_gaussian_weights, h_weigths, sizeof(h_weigths));
-
-    gaussian_blur_kernel_tex2d<<<gridSize, blockSize>>>(tex, d_output, width, height);
+    gaussian_blur_kernel_tex2d<<<gridSize, blockSize>>>(h_texture_input, d_output, width, height);
 }

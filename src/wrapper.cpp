@@ -21,29 +21,55 @@ void free_device_memory(void* ptr) {
     }
 }
 
+GPUContext* initGPU(int width, int height, float sigma) {
+    GPUContext* ctx = new GPUContext();
+    ctx->width = width;
+    ctx->height = height;
+    size_t img_size = width * height * sizeof(float);
+    size_t state_size = 2 * img_size;
 
+    cudaMalloc(&ctx->d_input, img_size);
+    cudaMalloc(&ctx->d_blur, img_size);
+    cudaMalloc(&ctx->d_sobel, img_size);
+    cudaMalloc(&ctx->d_filtered, img_size);
+    cudaMalloc(&ctx->d_output, img_size);
+    cudaMalloc(&ctx->d_state, state_size);
 
-void process_frame(float* h_input, float* h_output, float* d_state, int width, int height, float alpha, float sigma, float alpha_l, float alpha_h, Metrics* metrics) {
+    cudaMemset(ctx->d_state, 0, state_size);
+    
+    set_gaussian_weights(sigma);
+    init_blur_texture(ctx->d_input, width, height);
+
+    return ctx;
+}
+
+void cleanupGPU(GPUContext* ctx) {
+    if (ctx) {
+        cleanup_blur_texture();
+        cudaFree(ctx->d_input);
+        cudaFree(ctx->d_blur);
+        cudaFree(ctx->d_sobel);
+        cudaFree(ctx->d_filtered);
+        cudaFree(ctx->d_output);
+        cudaFree(ctx->d_state);
+        delete ctx;
+    }
+}
+
+void process_frame(float* h_input, float* h_output, GPUContext* ctx, float alpha, float alpha_l, float alpha_h, Metrics* metrics) {
+    int width = ctx->width;
+    int height = ctx->height;
     size_t img_size = width * height * sizeof(float);
     
-    float *d_input, *d_blur, *d_sobel, *d_filtered, *d_output;
-    cudaMalloc(&d_input, img_size);
-    cudaMalloc(&d_blur, img_size);
-    cudaMalloc(&d_sobel, img_size);
-    cudaMalloc(&d_filtered, img_size);
-    cudaMalloc(&d_output, img_size);
-
-    cudaEvent_t start, stop, total_start, total_stop;
+    cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-    cudaEventCreate(&total_start);
-    cudaEventCreate(&total_stop);
 
     float milliseconds = 0;
 
     // 1. Host to Device
     cudaEventRecord(start);
-    cudaMemcpy(d_input, h_input, img_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_input, h_input, img_size, cudaMemcpyHostToDevice);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
@@ -51,8 +77,7 @@ void process_frame(float* h_input, float* h_output, float* d_state, int width, i
 
     // 2. Gaussian Blur
     cudaEventRecord(start);
-    // apply_gaussian_blur(d_input, d_blur, width, height, sigma);
-    apply_gaussian_blur_tex2d(d_input, d_blur, width, height, sigma);
+    apply_gaussian_blur_tex2d(ctx->d_input, ctx->d_blur, width, height, 0.0f); // sigma is pre-calculated
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
@@ -60,7 +85,7 @@ void process_frame(float* h_input, float* h_output, float* d_state, int width, i
 
     // 3. Sobel X
     cudaEventRecord(start);
-    apply_sobel_x(d_blur, d_sobel, width, height);
+    apply_sobel_x(ctx->d_blur, ctx->d_sobel, width, height);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
@@ -68,7 +93,7 @@ void process_frame(float* h_input, float* h_output, float* d_state, int width, i
 
     // 4. Temporal Filter
     cudaEventRecord(start);
-    apply_temporal_filter(d_sobel, d_state, d_filtered, width, height, alpha_l, alpha_h);
+    apply_temporal_filter(ctx->d_sobel, ctx->d_state, ctx->d_filtered, width, height, alpha_l, alpha_h);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
@@ -76,7 +101,7 @@ void process_frame(float* h_input, float* h_output, float* d_state, int width, i
 
     // 5. Amplification
     cudaEventRecord(start);
-    apply_amplify(d_input, d_filtered, d_output, width, height, alpha);
+    apply_amplify(ctx->d_input, ctx->d_filtered, ctx->d_output, width, height, alpha);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
@@ -84,23 +109,14 @@ void process_frame(float* h_input, float* h_output, float* d_state, int width, i
 
     // 6. Device to Host
     cudaEventRecord(start);
-    cudaMemcpy(h_output, d_output, img_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_output, ctx->d_output, img_size, cudaMemcpyDeviceToHost);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
     metrics->device_to_host_ms = milliseconds;
 
-    // Cleanup local temp buffers
-    cudaFree(d_input);
-    cudaFree(d_blur);
-    cudaFree(d_sobel);
-    cudaFree(d_filtered);
-    cudaFree(d_output);
-    
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
-    cudaEventDestroy(total_start);
-    cudaEventDestroy(total_stop);
 }
 
 void get_histogram(float* h_input, int* h_histogram, int x1, int y1, int x2, int y2, int width, int height) {

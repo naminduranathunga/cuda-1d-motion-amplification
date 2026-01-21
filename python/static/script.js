@@ -182,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { console.error(e); }
     };
 
-    setInterval(updateHistogram, 500); // Update twice per second
+    // setInterval(updateHistogram, 500); // Update twice per second
 
     // Handle form submission
     uploadForm.addEventListener('submit', async (e) => {

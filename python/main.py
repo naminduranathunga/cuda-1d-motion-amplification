@@ -19,11 +19,29 @@ class Metrics(ctypes.Structure):
         ("device_to_host_ms", ctypes.c_float),
     ]
 
+# Define the GPUContext struct
+class GPUContext(ctypes.Structure):
+    _fields_ = [
+        ("d_input", ctypes.c_void_p),
+        ("d_blur", ctypes.c_void_p),
+        ("d_sobel", ctypes.c_void_p),
+        ("d_filtered", ctypes.c_void_p),
+        ("d_output", ctypes.c_void_p),
+        ("d_state", ctypes.c_void_p),
+        ("width", ctypes.c_int),
+        ("height", ctypes.c_int),
+    ]
+
 # Define types for functions
 lib.allocate_device_memory.argtypes = [ctypes.c_size_t]
 lib.allocate_device_memory.restype = ctypes.c_void_p
 
 lib.free_device_memory.argtypes = [ctypes.c_void_p]
+
+lib.initGPU.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_float]
+lib.initGPU.restype = ctypes.POINTER(GPUContext)
+
+lib.cleanupGPU.argtypes = [ctypes.POINTER(GPUContext)]
 
 lib.get_histogram.argtypes = [
     ctypes.POINTER(ctypes.c_float), # h_input
@@ -50,11 +68,8 @@ def compute_histogram(image_float, x1, y1, x2, y2):
 lib.process_frame.argtypes = [
     ctypes.POINTER(ctypes.c_float), # h_input
     ctypes.POINTER(ctypes.c_float), # h_output
-    ctypes.c_void_p,                # d_state
-    ctypes.c_int,                  # width
-    ctypes.c_int,                  # height
+    ctypes.POINTER(GPUContext),     # context
     ctypes.c_float,                # alpha
-    ctypes.c_float,                # sigma
     ctypes.c_float,                # alpha_l
     ctypes.c_float,                # alpha_h
     ctypes.POINTER(Metrics)        # metrics
@@ -105,64 +120,61 @@ def process_video(input_video, output_video, alpha=50.0, sigma=1.0, low_freq=0.5
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(output_video, fourcc, fps, (width, height), isColor=False)
 
-    # Allocate state memory (2 * width * height * float)
-    state_size = 2 * width * height * ctypes.sizeof(ctypes.c_float)
-    d_state = lib.allocate_device_memory(state_size)
+    # Initialize GPU context once
+    ctx = lib.initGPU(width, height, sigma)
 
     metrics_list = []
 
     print(f"Processing {input_video}...")
     
     frame_idx = 0
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+    try:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        # Preprocess: grayscale and float32 [0, 1]
-        if len(frame.shape) == 3:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = frame
-        
-        h_input = gray.astype(np.float32) / 255.0
-        h_output = np.zeros_like(h_input)
+            # Preprocess: grayscale and float32 [0, 1]
+            if len(frame.shape) == 3:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = frame
+            
+            h_input = gray.astype(np.float32) / 255.0
+            h_output = np.zeros_like(h_input)
 
-        # Call CUDA
-        metrics = Metrics()
-        lib.process_frame(
-            h_input.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-            h_output.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-            d_state,
-            width,
-            height,
-            alpha,
-            sigma,
-            alpha_l,
-            alpha_h,
-            ctypes.byref(metrics)
-        )
+            # Call CUDA
+            metrics = Metrics()
+            lib.process_frame(
+                h_input.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                h_output.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                ctx,
+                alpha,
+                alpha_l,
+                alpha_h,
+                ctypes.byref(metrics)
+            )
 
-        metrics_list.append([
-            metrics.host_to_device_ms,
-            metrics.gaussian_blur_ms,
-            metrics.sobel_x_ms,
-            metrics.temporal_filter_ms,
-            metrics.amplification_ms,
-            metrics.device_to_host_ms
-        ])
+            metrics_list.append([
+                metrics.host_to_device_ms,
+                metrics.gaussian_blur_ms,
+                metrics.sobel_x_ms,
+                metrics.temporal_filter_ms,
+                metrics.amplification_ms,
+                metrics.device_to_host_ms
+            ])
 
-        # Postprocess: convert back to uint8
-        res = (h_output * 255.0).clip(0, 255).astype(np.uint8)
-        out.write(res)
-        
-        frame_idx += 1
-        if frame_idx % 50 == 0:
-            print(f"Processed frame {frame_idx}")
-
-    lib.free_device_memory(d_state)
-    cap.release()
-    out.release()
+            # Postprocess: convert back to uint8
+            res = (h_output * 255.0).clip(0, 255).astype(np.uint8)
+            out.write(res)
+            
+            frame_idx += 1
+            if frame_idx % 50 == 0:
+                print(f"Processed frame {frame_idx}")
+    finally:
+        lib.cleanupGPU(ctx)
+        cap.release()
+        out.release()
 
     # Calculate average metrics
     avg_metrics = np.mean(metrics_list, axis=0)
