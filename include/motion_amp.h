@@ -13,6 +13,8 @@ struct GPUContext {
     float *d_filtered;
     float *d_output;
     float *d_state;
+    float *h_pinned_input;   // Pinned host buffer for input
+    float *h_pinned_output;  // Pinned host buffer for output
     int width;
     int height;
 };

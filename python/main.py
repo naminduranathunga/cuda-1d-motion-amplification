@@ -29,6 +29,8 @@ class GPUContext(ctypes.Structure):
         ("d_filtered", ctypes.c_void_p),
         ("d_output", ctypes.c_void_p),
         ("d_state", ctypes.c_void_p),
+        ("h_pinned_input", ctypes.c_void_p),
+        ("h_pinned_output", ctypes.c_void_p),
         ("width", ctypes.c_int),
         ("height", ctypes.c_int),
     ]

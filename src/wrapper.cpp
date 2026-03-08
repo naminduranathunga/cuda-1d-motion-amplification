@@ -1,5 +1,6 @@
 #include "motion_amp.h"
 #include <iostream>
+#include <cstring>
 
 extern "C" {
 
@@ -37,6 +38,10 @@ GPUContext* initGPU(int width, int height, float sigma) {
     cudaMalloc(&ctx->d_state, state_size);
 
     cudaMemset(ctx->d_state, 0, state_size);
+
+    // Allocate pinned host buffers for faster transfers
+    cudaMallocHost(&ctx->h_pinned_input, img_size);
+    cudaMallocHost(&ctx->h_pinned_output, img_size);
     
     set_gaussian_weights(sigma);
     init_blur_texture(ctx->d_input, width, height);
@@ -54,6 +59,8 @@ void cleanupGPU(GPUContext* ctx) {
         cudaFree(ctx->d_filtered);
         cudaFree(ctx->d_output);
         cudaFree(ctx->d_state);
+        cudaFreeHost(ctx->h_pinned_input);
+        cudaFreeHost(ctx->h_pinned_output);
         delete ctx;
     }
 }
@@ -69,9 +76,10 @@ void process_frame(float* h_input, float* h_output, GPUContext* ctx, float alpha
 
     float milliseconds = 0;
 
-    // 1. Host to Device
+    // 1. Host to Device (via pinned memory)
+    memcpy(ctx->h_pinned_input, h_input, img_size);
     cudaEventRecord(start);
-    cudaMemcpy(ctx->d_input, h_input, img_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(ctx->d_input, ctx->h_pinned_input, img_size, cudaMemcpyHostToDevice);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
@@ -109,13 +117,14 @@ void process_frame(float* h_input, float* h_output, GPUContext* ctx, float alpha
     cudaEventElapsedTime(&milliseconds, start, stop);
     metrics->amplification_ms = milliseconds;
 
-    // 6. Device to Host
+    // 6. Device to Host (via pinned memory)
     cudaEventRecord(start);
-    cudaMemcpy(h_output, ctx->d_output, img_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(ctx->h_pinned_output, ctx->d_output, img_size, cudaMemcpyDeviceToHost);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
     metrics->device_to_host_ms = milliseconds;
+    memcpy(h_output, ctx->h_pinned_output, img_size);
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
