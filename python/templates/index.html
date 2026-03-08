@@ -46,6 +46,10 @@
                                 <label for="user-fps">Override FPS</label>
                                 <input type="number" id="user-fps" name="fps" step="0.01" placeholder="Auto">
                             </div>
+                            <div class="input-item">
+                                <label for="threshold-val">Motion Cutoff</label>
+                                <input type="number" id="threshold-val" name="threshold" step="0.001" value="0.1">
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="alpha-range">Amplification Factor (α): <span id="alpha-val">50</span></label>
@@ -86,6 +90,14 @@
                     <div class="metric-card glass highlight">
                         <span class="label">Total GPU Time</span>
                         <span id="metric-total" class="value">0.00 ms</span>
+                    </div>
+                    <div class="metric-card glass highlight">
+                        <span class="label">Max Motion Mag</span>
+                        <span id="metric-max-mag" class="value">0.0000</span>
+                    </div>
+                    <div class="metric-card glass highlight" id="roi-metric-card">
+                        <span class="label">ROI Max Motion</span>
+                        <span id="metric-roi-max" class="value">0.0000</span>
                     </div>
                 </div>
 

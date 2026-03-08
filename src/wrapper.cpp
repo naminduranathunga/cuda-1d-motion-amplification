@@ -35,6 +35,7 @@ GPUContext* initGPU(int width, int height, float sigma) {
     cudaMalloc(&ctx->d_filtered, img_size);
     cudaMalloc(&ctx->d_output, img_size);
     cudaMalloc(&ctx->d_state, state_size);
+    cudaMalloc(&ctx->d_max_mag, sizeof(float));
 
     cudaMemset(ctx->d_state, 0, state_size);
     
@@ -54,11 +55,12 @@ void cleanupGPU(GPUContext* ctx) {
         cudaFree(ctx->d_filtered);
         cudaFree(ctx->d_output);
         cudaFree(ctx->d_state);
+        cudaFree(ctx->d_max_mag);
         delete ctx;
     }
 }
 
-void process_frame(float* h_input, float* h_output, GPUContext* ctx, float alpha, float alpha_l, float alpha_h, Metrics* metrics) {
+void process_frame(float* h_input, float* h_output, GPUContext* ctx, float alpha, float alpha_l, float alpha_h, float threshold, Metrics* metrics) {
     int width = ctx->width;
     int height = ctx->height;
     size_t img_size = width * height * sizeof(float);
@@ -103,11 +105,15 @@ void process_frame(float* h_input, float* h_output, GPUContext* ctx, float alpha
 
     // 5. Amplification
     cudaEventRecord(start);
-    apply_amplify(ctx->d_input, ctx->d_filtered, ctx->d_output, width, height, alpha);
+    cudaMemset(ctx->d_max_mag, 0, sizeof(float));
+    apply_amplify(ctx->d_input, ctx->d_filtered, ctx->d_output, width, height, alpha, threshold, ctx->d_max_mag);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
     metrics->amplification_ms = milliseconds;
+
+    // Retrieve max magnitude
+    cudaMemcpy(&metrics->max_magnitude, ctx->d_max_mag, sizeof(float), cudaMemcpyDeviceToHost);
 
     // 6. Device to Host
     cudaEventRecord(start);

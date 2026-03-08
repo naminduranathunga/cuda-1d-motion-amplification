@@ -170,7 +170,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     video_path: currentInputUrl,
-                    roi: mappedRoi
+                    roi: mappedRoi,
+                    low_freq: parseFloat(document.getElementById('low-freq').value),
+                    high_freq: parseFloat(document.getElementById('high-freq').value)
                 })
             });
             const data = await response.json();
@@ -178,6 +180,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 freqChart.data.labels = data.frequencies.map(f => f.toFixed(2));
                 freqChart.data.datasets[0].data = data.magnitudes;
                 freqChart.update();
+
+                if (data.max_roi_magnitude !== undefined) {
+                    document.getElementById('metric-roi-max').textContent = data.max_roi_magnitude.toFixed(4);
+                }
             }
         } catch (e) { console.error(e); }
     };
@@ -214,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('metric-temp').textContent = `${data.metrics.temporal_filter.toFixed(3)} ms`;
                 document.getElementById('metric-amp').textContent = `${data.metrics.amplification.toFixed(3)} ms`;
                 document.getElementById('metric-total').textContent = `${data.metrics.total.toFixed(3)} ms`;
+                document.getElementById('metric-max-mag').textContent = data.metrics.max_magnitude.toFixed(4);
 
                 // Update players
                 currentInputUrl = data.input_url;

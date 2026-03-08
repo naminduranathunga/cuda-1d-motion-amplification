@@ -13,6 +13,7 @@ struct GPUContext {
     float *d_filtered;
     float *d_output;
     float *d_state;
+    float *d_max_mag;
     int width;
     int height;
 };
@@ -24,6 +25,7 @@ struct Metrics {
     float temporal_filter_ms;
     float amplification_ms;
     float device_to_host_ms;
+    float max_magnitude;
 };
 
 // Memory management
@@ -41,11 +43,11 @@ void apply_gaussian_blur(float* d_input, float* d_output, int width, int height,
 void apply_gaussian_blur_tex2d(float* d_input, float* d_temp, float* d_output, int width, int height);
 void apply_sobel_x(float* d_input, float* d_output, int width, int height);
 void apply_temporal_filter(float* d_input, float* d_state, float* d_output, int width, int height, float low_cutoff, float high_cutoff);
-void apply_amplify(float* d_original, float* d_filtered, float* d_output, int width, int height, float alpha);
+void apply_amplify(float* d_original, float* d_filtered, float* d_output, int width, int height, float alpha, float threshold, float* d_max_mag);
 void compute_roi_histogram(float* d_input, int* d_histogram, int x1, int y1, int x2, int y2, int width, int height);
 
 // Main processing function for Python to call
-void process_frame(float* h_input, float* h_output, GPUContext* context, float alpha, float alpha_l, float alpha_h, Metrics* metrics);
+void process_frame(float* h_input, float* h_output, GPUContext* context, float alpha, float alpha_l, float alpha_h, float threshold, Metrics* metrics);
 void get_histogram(float* h_input, int* h_histogram, int x1, int y1, int x2, int y2, int width, int height);
 
 }

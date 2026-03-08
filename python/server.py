@@ -32,6 +32,7 @@ def upload_file():
     sigma = float(request.form.get('sigma', 1.0))
     low_freq = float(request.form.get('low_freq', 0.5))
     high_freq = float(request.form.get('high_freq', 2.0))
+    threshold = float(request.form.get('threshold', 0.1))
     fps = request.form.get('fps')
     if fps:
         fps = float(fps)
@@ -50,7 +51,7 @@ def upload_file():
     
     # Process the video
     try:
-        metrics = process_video(input_path, output_path, alpha, sigma, low_freq, high_freq, fps)
+        metrics = process_video(input_path, output_path, alpha, sigma, low_freq, high_freq, threshold, fps)
         
         # Transcode BOTH to H.264 for web compatibility
         import imageio_ffmpeg
@@ -78,7 +79,8 @@ def upload_file():
                 'temporal_filter': float(metrics[3]),
                 'amplification': float(metrics[4]),
                 'device_to_host': float(metrics[5]),
-                'total': float(sum(metrics))
+                'max_magnitude': float(metrics[6]),
+                'total': float(sum(metrics[:6]))
             }
         })
     except Exception as e:
@@ -175,16 +177,52 @@ def get_frequency_spectrum():
 
     # Compute FFT
     n = len(intensities)
+    y = np.array(intensities)
     # Detrend
-    intensities = np.array(intensities) - np.mean(intensities)
-    fft_vals = np.fft.rfft(intensities)
-    fft_freqs = np.fft.rfftfreq(n, d=1.0/fps)
+    y_detrend = y - np.mean(y)
     
+    # Calculate Max Motion Magnitude using same IIR logic as GPU
+    # Get parameters from request or defaults
+    data = request.json
+    try:
+        low_f = float(data.get('low_freq', 0.5))
+        high_f = float(data.get('high_freq', 2.0))
+    except:
+        low_f, high_f = 0.5, 2.0
+
+    def freq_to_alpha(f, fs):
+        w = 2 * np.pi * f / fs
+        return w / (1 + w)
+
+    alpha_l = freq_to_alpha(low_f, fps)
+    alpha_h = freq_to_alpha(high_f, fps)
+
+    # Simulation of the CUDA temporal_filter_kernel + amplify_kernel
+    low_pass = 0.0
+    high_pass = 0.0
+    max_mag = 0.0
+
+    # The intensities are essentially the "gray" values scaled to [0, 255] by OpenCV
+    # We should normalize to [0, 1] to match the GPU pipeline
+    y_norm = y / 255.0
+
+    for val in y_norm:
+        # low_pass = (1 - alpha_l) * low_pass + alpha_l * val
+        low_pass = low_pass + alpha_l * (val - low_pass)
+        # high_pass = (1 - alpha_h) * high_pass + alpha_h * val
+        high_pass = high_pass + alpha_h * (val - high_pass)
+        
+        filtered = high_pass - low_pass
+        max_mag = max(max_mag, abs(filtered))
+
+    fft_vals = np.fft.rfft(y_detrend)
+    fft_freqs = np.fft.rfftfreq(n, d=1.0/fps)
     magnitudes = np.abs(fft_vals)
     
     return jsonify({
         'frequencies': fft_freqs.tolist(),
-        'magnitudes': magnitudes.tolist()
+        'magnitudes': magnitudes.tolist(),
+        'max_roi_magnitude': float(max_mag)
     })
 
 if __name__ == '__main__':

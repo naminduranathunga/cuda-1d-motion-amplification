@@ -17,6 +17,7 @@ class Metrics(ctypes.Structure):
         ("temporal_filter_ms", ctypes.c_float),
         ("amplification_ms", ctypes.c_float),
         ("device_to_host_ms", ctypes.c_float),
+        ("max_magnitude", ctypes.c_float),
     ]
 
 # Define the GPUContext struct
@@ -29,6 +30,7 @@ class GPUContext(ctypes.Structure):
         ("d_filtered", ctypes.c_void_p),
         ("d_output", ctypes.c_void_p),
         ("d_state", ctypes.c_void_p),
+        ("d_max_mag", ctypes.c_void_p),
         ("width", ctypes.c_int),
         ("height", ctypes.c_int),
     ]
@@ -73,6 +75,7 @@ lib.process_frame.argtypes = [
     ctypes.c_float,                # alpha
     ctypes.c_float,                # alpha_l
     ctypes.c_float,                # alpha_h
+    ctypes.c_float,                # threshold
     ctypes.POINTER(Metrics)        # metrics
 ]
 
@@ -90,7 +93,7 @@ def generate_synthetic_video(filename, width=640, height=480, frames=100):
     out.release()
     print(f"Generated {filename}")
 
-def process_video(input_video, output_video, alpha=50.0, sigma=1.0, low_freq=0.5, high_freq=2.0, user_fps=None):
+def process_video(input_video, output_video, alpha=50.0, sigma=1.0, low_freq=0.5, high_freq=2.0, threshold=0.1, user_fps=None):
     cap = cv2.VideoCapture(input_video)
     if not cap.isOpened():
         print(f"Error opening video: {input_video}")
@@ -153,6 +156,7 @@ def process_video(input_video, output_video, alpha=50.0, sigma=1.0, low_freq=0.5
                 alpha,
                 alpha_l,
                 alpha_h,
+                threshold,
                 ctypes.byref(metrics)
             )
 
@@ -162,7 +166,8 @@ def process_video(input_video, output_video, alpha=50.0, sigma=1.0, low_freq=0.5
                 metrics.sobel_x_ms,
                 metrics.temporal_filter_ms,
                 metrics.amplification_ms,
-                metrics.device_to_host_ms
+                metrics.device_to_host_ms,
+                metrics.max_magnitude
             ])
 
             # Postprocess: convert back to uint8
