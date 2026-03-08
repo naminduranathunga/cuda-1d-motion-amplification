@@ -33,6 +33,6 @@ cd ..
 # Run (ensure venv is active)
 # cd ~/gpu_prog/minip
 source venv/bin/activate
-# python3 python/server.py
-python3 python/main.py
+python3 python/server.py
+# python3 python/main.py
 

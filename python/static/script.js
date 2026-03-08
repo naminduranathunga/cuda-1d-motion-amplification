@@ -219,8 +219,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('metric-sobel').textContent = `${data.metrics.sobel_x.toFixed(3)} ms`;
                 document.getElementById('metric-temp').textContent = `${data.metrics.temporal_filter.toFixed(3)} ms`;
                 document.getElementById('metric-amp').textContent = `${data.metrics.amplification.toFixed(3)} ms`;
-                document.getElementById('metric-total').textContent = `${data.metrics.total.toFixed(3)} ms`;
+                document.getElementById('metric-d2h').textContent = `${data.metrics.device_to_host.toFixed(3)} ms`;
+                document.getElementById('metric-throughput').textContent = `${data.metrics.throughput_fps.toFixed(2)} fps`;
+                document.getElementById('metric-avg-frame').textContent = `${data.metrics.avg_frame_time_ms.toFixed(3)} ms`;
                 document.getElementById('metric-max-mag').textContent = data.metrics.max_magnitude.toFixed(4);
+                document.getElementById('metric-buffers').textContent = document.getElementById('num-buffers').value;
 
                 // Update players
                 currentInputUrl = data.input_url;

@@ -106,3 +106,30 @@ extern "C" void apply_gaussian_blur_tex2d(float* d_input, float* d_temp, float* 
     // 2. Vertical pass: Temp (Linear) -> Output (Linear)
     gaussian_blur_v_kernel<<<gridSize, blockSize>>>(d_temp, d_output, width, height);
 }
+
+// Per-buffer texture management for stream pipeline
+extern "C" void init_blur_texture_for_buffer(float* d_input, int width, int height, cudaTextureObject_t* tex_out) {
+    if (*tex_out) {
+        cudaDestroyTextureObject(*tex_out);
+    }
+    *tex_out = createTexture2D(d_input, width, height);
+}
+
+extern "C" void cleanup_blur_texture_for_buffer(cudaTextureObject_t* tex) {
+    if (*tex) {
+        cudaDestroyTextureObject(*tex);
+        *tex = 0;
+    }
+}
+
+extern "C" void apply_gaussian_blur_tex2d_stream(cudaTextureObject_t tex, float* d_temp, float* d_output, int width, int height, cudaStream_t stream) {
+    dim3 blockSize(16, 16);
+    dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
+
+    // 1. Horizontal pass: Texture -> Temp
+    gaussian_blur_h_kernel<<<gridSize, blockSize, 0, stream>>>(tex, d_temp, width, height);
+    
+    // 2. Vertical pass: Temp -> Output
+    gaussian_blur_v_kernel<<<gridSize, blockSize, 0, stream>>>(d_temp, d_output, width, height);
+}
+

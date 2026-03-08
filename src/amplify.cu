@@ -50,3 +50,9 @@ extern "C" void apply_amplify(float* d_original, float* d_filtered, float* d_out
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
     amplify_kernel<<<gridSize, blockSize>>>(d_original, d_filtered, d_output, width, height, alpha, threshold, d_max_mag);
 }
+
+extern "C" void apply_amplify_stream(float* d_original, float* d_filtered, float* d_output, int width, int height, float alpha, float threshold, float* d_max_mag, cudaStream_t stream) {
+    dim3 blockSize(16, 16);
+    dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
+    amplify_kernel<<<gridSize, blockSize, 0, stream>>>(d_original, d_filtered, d_output, width, height, alpha, threshold, d_max_mag);
+}

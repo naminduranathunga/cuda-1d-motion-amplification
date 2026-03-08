@@ -32,3 +32,9 @@ extern "C" void apply_sobel_x(float* d_input, float* d_output, int width, int he
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
     sobel_x_kernel<<<gridSize, blockSize>>>(d_input, d_output, width, height);
 }
+
+extern "C" void apply_sobel_x_stream(float* d_input, float* d_output, int width, int height, cudaStream_t stream) {
+    dim3 blockSize(16, 16);
+    dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
+    sobel_x_kernel<<<gridSize, blockSize, 0, stream>>>(d_input, d_output, width, height);
+}

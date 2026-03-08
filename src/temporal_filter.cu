@@ -31,3 +31,9 @@ extern "C" void apply_temporal_filter(float* d_input, float* d_state, float* d_o
     dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
     temporal_filter_kernel<<<gridSize, blockSize>>>(d_input, d_state, d_output, width, height, alpha_l, alpha_h);
 }
+
+extern "C" void apply_temporal_filter_stream(float* d_input, float* d_state, float* d_output, int width, int height, float alpha_l, float alpha_h, cudaStream_t stream) {
+    dim3 blockSize(16, 16);
+    dim3 gridSize((width + blockSize.x - 1) / blockSize.x, (height + blockSize.y - 1) / blockSize.y);
+    temporal_filter_kernel<<<gridSize, blockSize, 0, stream>>>(d_input, d_state, d_output, width, height, alpha_l, alpha_h);
+}

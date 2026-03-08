@@ -3,7 +3,7 @@ from flask_cors import CORS
 import os
 import uuid
 import subprocess
-from main import process_video
+from main import process_video, process_video_streamed
 import cv2
 import numpy as np
 
@@ -33,6 +33,7 @@ def upload_file():
     low_freq = float(request.form.get('low_freq', 0.5))
     high_freq = float(request.form.get('high_freq', 2.0))
     threshold = float(request.form.get('threshold', 0.1))
+    num_buffers = int(request.form.get('num_buffers', 5))
     fps = request.form.get('fps')
     if fps:
         fps = float(fps)
@@ -51,7 +52,7 @@ def upload_file():
     
     # Process the video
     try:
-        metrics = process_video(input_path, output_path, alpha, sigma, low_freq, high_freq, threshold, fps)
+        metrics = process_video_streamed(input_path, output_path, alpha, sigma, low_freq, high_freq, threshold, fps, num_buffers)
         
         # Transcode BOTH to H.264 for web compatibility
         import imageio_ffmpeg
@@ -73,14 +74,17 @@ def upload_file():
             'input_url': f'/uploads/{web_input_filename}',
             'output_url': f'/processed/{web_output_filename}',
             'metrics': {
-                'host_to_device': float(metrics[0]),
-                'gaussian_blur': float(metrics[1]),
-                'sobel_x': float(metrics[2]),
-                'temporal_filter': float(metrics[3]),
-                'amplification': float(metrics[4]),
-                'device_to_host': float(metrics[5]),
-                'max_magnitude': float(metrics[6]),
-                'total': float(sum(metrics[:6]))
+                'host_to_device': metrics['host_to_device'],
+                'gaussian_blur': metrics['gaussian_blur'],
+                'sobel_x': metrics['sobel_x'],
+                'temporal_filter': metrics['temporal_filter'],
+                'amplification': metrics['amplification'],
+                'device_to_host': metrics['device_to_host'],
+                'max_magnitude': metrics['max_magnitude'],
+                'total': metrics['host_to_device'] + metrics['gaussian_blur'] + metrics['sobel_x'] + metrics['temporal_filter'] + metrics['amplification'] + metrics['device_to_host'],
+                'throughput_fps': metrics['throughput_fps'],
+                'avg_frame_time_ms': metrics['avg_frame_time_ms'],
+                'total_frames': metrics['total_frames'],
             }
         })
     except Exception as e:
